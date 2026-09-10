@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>聖經分類彙編經文庫</title>
+    <title>聖經分類彙編與小組禱告專區</title>
     <!-- Tailwind CSS (輕量極速樣式庫) -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome 圖示 -->
@@ -19,18 +19,34 @@
 
     <!-- 頂部導覽列 Header -->
     <header class="bg-indigo-900 text-white shadow-md z-20 flex-shrink-0">
-        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
-            <div class="flex items-center space-x-3">
-                <button id="mobile-menu-btn" class="md:hidden text-white focus:outline-none p-1">
-                    <i class="fa-solid fa-bars text-xl"></i>
-                </button>
-                <div class="flex items-center space-x-2">
-                    <i class="fa-solid fa-book-bible text-amber-400 text-2xl"></i>
-                    <h1 class="text-xl font-bold tracking-wide">聖經分類彙編</h1>
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-col md:flex-row items-center justify-between gap-3">
+            
+            <div class="flex items-center justify-between w-full md:w-auto">
+                <div class="flex items-center space-x-3">
+                    <button id="mobile-menu-btn" class="md:hidden text-white focus:outline-none p-1">
+                        <i class="fa-solid fa-bars text-xl"></i>
+                    </button>
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-book-bible text-amber-400 text-2xl"></i>
+                        <h1 class="text-xl font-bold tracking-wide">聖經分類彙編</h1>
+                    </div>
                 </div>
             </div>
-            <!-- 搜尋欄 (桌面版 & 手機版) -->
-            <div class="relative w-1/2 md:w-80">
+
+            <!-- 頂部頁面切換標籤 (Tabs) -->
+            <div class="flex bg-indigo-950/80 p-1 rounded-xl w-full md:w-auto justify-center space-x-1 text-sm font-semibold">
+                <button id="tab-verses-btn" onclick="switchTab('verses')" class="flex-1 md:flex-initial px-4 py-1.5 rounded-lg bg-amber-400 text-indigo-950 shadow transition flex items-center justify-center space-x-1">
+                    <i class="fa-solid fa-book-open"></i>
+                    <span>經文彙編</span>
+                </button>
+                <button id="tab-prayer-btn" onclick="switchTab('prayer')" class="flex-1 md:flex-initial px-4 py-1.5 rounded-lg text-indigo-200 hover:text-white hover:bg-indigo-800/50 transition flex items-center justify-center space-x-1">
+                    <i class="fa-solid fa-hands-praying"></i>
+                    <span>小組聚會禱告</span>
+                </button>
+            </div>
+
+            <!-- 搜尋欄 -->
+            <div id="search-container" class="relative w-full md:w-72">
                 <input type="text" id="search-input" placeholder="搜尋經文、篇名、關鍵字..." 
                        class="w-full bg-indigo-800/60 text-white placeholder-indigo-300 rounded-full pl-9 pr-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
                 <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-indigo-300 text-sm"></i>
@@ -41,61 +57,175 @@
     <!-- 主要內容區 Main Container -->
     <div class="flex flex-1 overflow-hidden relative">
 
-        <!-- 左側選單 (Sidebar) -->
-        <aside id="sidebar" class="bg-white border-r border-slate-200 w-72 flex-shrink-0 flex flex-col absolute md:relative inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out z-10 shadow-lg md:shadow-none">
-            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                <span class="font-bold text-slate-700 text-sm tracking-wider uppercase"><i class="fa-solid fa-list-ul mr-2 text-indigo-600"></i>主題分類大綱</span>
-                <button id="close-sidebar-btn" class="md:hidden text-slate-400 hover:text-slate-600">
-                    <i class="fa-solid fa-xmark text-lg"></i>
-                </button>
-            </div>
-            <!-- 分類選單列表 -->
-            <nav id="category-tree" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                <!-- 由 JavaScript 自動動態渲染目錄樹 -->
-                <div class="text-center py-8 text-slate-400 text-sm">
-                    <i class="fa-solid fa-circle-notch fa-spin text-xl mb-2 text-indigo-500"></i>
-                    <p>載入分類目錄中...</p>
+        <!-- ===== 頁面一：經文彙編 (預設) ===== -->
+        <div id="view-verses" class="flex flex-1 w-full overflow-hidden">
+            <!-- 左側選單 (Sidebar) -->
+            <aside id="sidebar" class="bg-white border-r border-slate-200 w-72 flex-shrink-0 flex flex-col absolute md:relative inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out z-10 shadow-lg md:shadow-none">
+                <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                    <span class="font-bold text-slate-700 text-sm tracking-wider uppercase"><i class="fa-solid fa-list-ul mr-2 text-indigo-600"></i>主題分類大綱</span>
+                    <button id="close-sidebar-btn" class="md:hidden text-slate-400 hover:text-slate-600">
+                        <i class="fa-solid fa-xmark text-lg"></i>
+                    </button>
                 </div>
-            </nav>
-        </aside>
-
-        <!-- 遮罩層 (手機版選單開啟時用) -->
-        <div id="sidebar-overlay" class="fixed inset-0 bg-black/40 z-0 hidden md:hidden"></div>
-
-        <!-- 右側主要內容展示區 (Content Area) -->
-        <main class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-slate-50">
-            <div class="max-w-4xl mx-auto">
-                
-                <!-- 當前選取位置 Breadcrumb / Header -->
-                <div class="mb-6 flex items-center justify-between border-b border-slate-200 pb-3">
-                    <div>
-                        <h2 id="current-title" class="text-2xl font-bold text-indigo-950">所有經文瀏覽</h2>
-                        <p id="current-subtitle" class="text-xs text-slate-500 mt-1">請選擇左側主題分類或搜尋關鍵字</p>
+                <nav id="category-tree" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                    <div class="text-center py-8 text-slate-400 text-sm">
+                        <i class="fa-solid fa-circle-notch fa-spin text-xl mb-2 text-indigo-500"></i>
+                        <p>載入分類目錄中...</p>
                     </div>
-                    <span id="result-count" class="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2.5 py-1 rounded-full">0 條經文</span>
-                </div>
+                </nav>
+            </aside>
 
-                <!-- 經文卡片展示容器 -->
-                <div id="cards-container" class="space-y-4">
-                    <!-- 由 JavaScript 自動渲染經文卡片 -->
+            <!-- 遮罩層 (手機版用) -->
+            <div id="sidebar-overlay" class="fixed inset-0 bg-black/40 z-0 hidden md:hidden"></div>
+
+            <!-- 右側主要經文展示區 -->
+            <main class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-slate-50">
+                <div class="max-w-4xl mx-auto">
+                    <div class="mb-6 flex items-center justify-between border-b border-slate-200 pb-3">
+                        <div>
+                            <h2 id="current-title" class="text-2xl font-bold text-indigo-950">所有經文瀏覽</h2>
+                            <p id="current-subtitle" class="text-xs text-slate-500 mt-1">請選擇左側主題分類或搜尋關鍵字</p>
+                        </div>
+                        <span id="result-count" class="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2.5 py-1 rounded-full">0 條經文</span>
+                    </div>
+                    <div id="cards-container" class="space-y-4"></div>
                 </div>
+            </main>
+        </div>
+
+        <!-- ===== 頁面二：小組聚會禱告專區 (預設隱藏) ===== -->
+        <div id="view-prayer" class="hidden flex-1 w-full overflow-y-auto custom-scrollbar p-4 md:p-8 bg-slate-100">
+            <div class="max-w-3xl mx-auto space-y-6">
+
+                <!-- 聚會資料卡片 (以日期排列) -->
+                <article class="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden">
+                    
+                    <!-- 卡片頂部 Banner -->
+                    <div class="bg-gradient-to-r from-indigo-900 to-indigo-800 p-6 text-white relative">
+                        <div class="inline-block bg-amber-400 text-indigo-950 text-xs font-extrabold px-3 py-1 rounded-full mb-2">
+                            <i class="fa-regular fa-calendar-check mr-1"></i>2026.9.6 – 9.12
+                        </div>
+                        <h2 class="text-2xl md:text-3xl font-black text-amber-300">主題：得著不能奪去的喜樂</h2>
+                        <p class="text-indigo-200 text-sm mt-1">小組聚會分享與同心守望禱告</p>
+                    </div>
+
+                    <div class="p-6 md:p-8 space-y-6">
+
+                        <!-- 經文卡 -->
+                        <section class="bg-amber-50/60 rounded-xl p-4 border-l-4 border-amber-400">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-amber-800 mb-1">
+                                <i class="fa-solid fa-quote-left mr-1"></i>本週經文
+                            </h3>
+                            <p class="font-serif text-slate-800 text-base md:text-lg leading-relaxed">
+                                「聖靈所結的果子，就是仁愛、喜樂、和平、忍耐、恩慈、良善、信實、溫柔、節制。這樣的事沒有律法禁止。」
+                            </p>
+                            <span class="block text-right text-xs font-bold text-amber-900 mt-2">— 加拉太書 5:22-23</span>
+                        </section>
+
+                        <!-- 主題分享內文 -->
+                        <section class="space-y-3 text-slate-700 leading-relaxed text-sm md:text-base">
+                            <h3 class="font-bold text-indigo-950 text-lg border-b border-slate-100 pb-2">
+                                <i class="fa-solid fa-heart text-rose-500 mr-2"></i>主題分享
+                            </h3>
+                            <p>
+                                聖靈所結的第二個果子是「喜樂」。聖經中的喜樂，是一種從神而來、超越環境的生命狀態，並非只是事情順利時產生的開心，或是要求自己凡事保持正面…。因為我們的喜樂根源是神自己，不是環境；換句話說，這是心性的轉向：轉向神，以神為我們的滿足，即使環境有所改變，心裡仍然可以有盼望。
+                            </p>
+                            <p>
+                                耶穌說：「這些事我已經對你們說了，是要叫我的喜樂存在你們心裡，並叫你們的喜樂可以滿足。」（約15章）基督徒的喜樂不是自己製造出來的，而是從與主的連結中領受的。枝子不必努力「製造果子」，而是住在葡萄樹上，「自然結出」果子。當我們常常住在基督裡，聖靈就輸送屬天的喜樂，更多成為我們生命的一部分。
+                            </p>
+                            <div class="bg-indigo-50 rounded-xl p-4 text-indigo-900 font-medium">
+                                <strong class="text-indigo-950 block mb-1">💡 本週操作操練：</strong>
+                                不要讓環境決定你的喜樂，讓神的喜樂滿足你。當事情不如預期、禱告還沒有看見答案，甚至心情低落時：
+                                <ol class="list-decimal list-inside space-y-1 mt-2 text-sm text-indigo-800">
+                                    <li>刻意回到神面前，數算祂的恩典、思想祂的信實。</li>
+                                    <li>宣告「來自耶和華的喜樂是我的力量！」喜樂並不否認困難，卻在困難中確信：神與我同在，祂在其中掌權。</li>
+                                </ol>
+                            </div>
+                        </section>
+
+                        <!-- 禱告焦點與架構 -->
+                        <section class="space-y-4 pt-2">
+                            <div class="bg-rose-50 rounded-xl p-3.5 border border-rose-100 text-rose-900 text-sm font-semibold flex items-center">
+                                <i class="fa-solid fa-bullseye text-rose-500 text-lg mr-2.5"></i>
+                                <span>禱告焦點：喜樂根基要從環境轉向基督，在順境與逆境中都能因主而喜樂。</span>
+                            </div>
+
+                            <div class="space-y-3">
+                                <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                    <h4 class="font-bold text-indigo-900 text-sm mb-1">1. 為自己禱告</h4>
+                                    <p class="text-xs md:text-sm text-slate-600 leading-relaxed">
+                                        跟主說：「是祢的喜樂保護我的心，帶給我力量，我選擇從建立在環境、人的肯定或事情是否順利上『轉向祢』。奉耶穌的名，當我面對壓力、失望或等待時，按著祢的信實與良善，祢必向我顯明恩典與慈愛，使我身心靈得力、有盼望。祢的喜樂是我生命每天的力量。」
+                                    </p>
+                                </div>
+
+                                <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                    <h4 class="font-bold text-indigo-900 text-sm mb-1">2. 為教會禱告</h4>
+                                    <p class="text-xs md:text-sm text-slate-600 leading-relaxed">
+                                        跟主說：「主啊，將從祢而來的喜樂充滿祢的教會，領受因著與基督的連結而有的喜樂。讓祢的喜樂來醫治事奉中的疲乏、失落與灰心，使軟弱的重新得力。我們選擇從追求聚會的氣氛，轉向心靈誠實的敬拜；將屬天的喜樂來充滿我們教會，喜樂的江河滔滔不絕的在教會湧流。」
+                                    </p>
+                                </div>
+
+                                <div class="p-4 bg-slate-50 rounded-xl border border-slate-200">
+                                    <h4 class="font-bold text-indigo-900 text-sm mb-1">3. 為國度禱告</h4>
+                                    <p class="text-xs md:text-sm text-slate-600 leading-relaxed">
+                                        宣告亞洲、美洲、中東各地，神的兒女在這個戰亂、災禍、人人自危、焦慮恐懼的時代，教會卻充滿喜樂與盼望的見證與吸引。世界越不安，神的百姓越是經歷神的信實。宣告屬主的人，要把從基督而來的喜樂盼望散佈開來。為台灣2027全國嚴肅會呼求主憐憫、保護、復興台灣。
+                                    </p>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- 事工守望與本週默想 -->
+                        <section class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+                            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                                <h4 class="font-bold text-indigo-900 text-xs uppercase tracking-wider mb-2">
+                                    <i class="fa-solid fa-shield-halved mr-1 text-indigo-600"></i>為教會事工守望
+                                </h4>
+                                <ul class="text-xs text-slate-600 space-y-1.5 list-disc list-inside">
+                                    <li>裝備課有根基奠定</li>
+                                    <li>10/2 嚴肅會前置敬拜禱告晚會</li>
+                                    <li>10/31 花蓮區嚴肅會代禱者訓練</li>
+                                    <li>11/3 花蓮區嚴肅會</li>
+                                    <li>12月 聖誕晚會籌備、2027年方向</li>
+                                    <li>母堂、志學、新秀經歷行神蹟的神，病得醫治、生命得改變更新</li>
+                                    <li>2027/3/27 高雄全國嚴肅會！</li>
+                                </ul>
+                            </div>
+
+                            <div class="bg-amber-50/50 p-4 rounded-xl border border-amber-200 flex flex-col justify-between">
+                                <div>
+                                    <h4 class="font-bold text-amber-900 text-xs uppercase tracking-wider mb-2">
+                                        <i class="fa-solid fa-brain mr-1 text-amber-600"></i>本週默想思考
+                                    </h4>
+                                    <p class="text-sm font-semibold text-slate-800">
+                                        「我可以怎麼在不順遂的情況下，仍然保有屬天的喜樂？」
+                                    </p>
+                                </div>
+                                <button onclick="copyPrayerContent()" class="mt-4 w-full bg-amber-400 hover:bg-amber-500 text-indigo-950 font-bold text-xs py-2 rounded-lg transition flex items-center justify-center space-x-1">
+                                    <i class="fa-regular fa-copy"></i>
+                                    <span>複製本週禱告材料至 LINE</span>
+                                </button>
+                            </div>
+                        </section>
+
+                    </div>
+                </article>
 
             </div>
-        </main>
+        </div>
+
     </div>
 
-    <!-- 吐司通知 Toast (複製成功提示) -->
+    <!-- 吐司通知 Toast -->
     <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 text-white px-4 py-2.5 rounded-lg shadow-xl text-sm flex items-center space-x-2 transition-opacity duration-300 opacity-0 pointer-events-none z-50">
         <i class="fa-solid fa-circle-check text-emerald-400"></i>
-        <span id="toast-message">經文已複製到剪貼簿！</span>
+        <span id="toast-message">內容已複製到剪貼簿！</span>
     </div>
 
     <!-- JavaScript 邏輯程式碼 -->
     <script>
         let bibleData = null;
-        let allVersesFlat = []; // 用於快速關鍵字搜尋的扁平化資料
+        let allVersesFlat = [];
 
-        // 初始化：載入 JSON 檔案
         document.addEventListener('DOMContentLoaded', () => {
             fetch('bible_topics.json')
                 .then(response => {
@@ -106,7 +236,7 @@
                     bibleData = data;
                     flattenData(data);
                     renderSidebar(data);
-                    renderAllVerses(); // 預設顯示全部經文
+                    renderAllVerses();
                 })
                 .catch(error => {
                     console.error('Error:', error);
@@ -122,7 +252,34 @@
             setupEventListeners();
         });
 
-        // 扁平化資料，便於搜尋
+        // 頁面 Tab 切換邏輯
+        function switchTab(tab) {
+            const versesView = document.getElementById('view-verses');
+            const prayerView = document.getElementById('view-prayer');
+            const versesBtn = document.getElementById('tab-verses-btn');
+            const prayerBtn = document.getElementById('tab-prayer-btn');
+            const searchContainer = document.getElementById('search-container');
+            const mobileMenuBtn = document.getElementById('mobile-menu-btn');
+
+            if (tab === 'verses') {
+                versesView.classList.remove('hidden');
+                prayerView.classList.add('hidden');
+                searchContainer.classList.remove('hidden');
+                mobileMenuBtn.classList.remove('hidden');
+
+                versesBtn.className = "flex-1 md:flex-initial px-4 py-1.5 rounded-lg bg-amber-400 text-indigo-950 shadow transition flex items-center justify-center space-x-1";
+                prayerBtn.className = "flex-1 md:flex-initial px-4 py-1.5 rounded-lg text-indigo-200 hover:text-white hover:bg-indigo-800/50 transition flex items-center justify-center space-x-1";
+            } else {
+                versesView.classList.add('hidden');
+                prayerView.classList.remove('hidden');
+                searchContainer.classList.add('hidden');
+                mobileMenuBtn.classList.add('hidden');
+
+                prayerBtn.className = "flex-1 md:flex-initial px-4 py-1.5 rounded-lg bg-amber-400 text-indigo-950 shadow transition flex items-center justify-center space-x-1";
+                versesBtn.className = "flex-1 md:flex-initial px-4 py-1.5 rounded-lg text-indigo-200 hover:text-white hover:bg-indigo-800/50 transition flex items-center justify-center space-x-1";
+            }
+        }
+
         function flattenData(data) {
             allVersesFlat = [];
             data.categories.forEach(cat => {
@@ -143,7 +300,6 @@
             });
         }
 
-        // 渲染左側樹狀分類選單
         function renderSidebar(data) {
             const container = document.getElementById('category-tree');
             let html = '';
@@ -175,7 +331,6 @@
             container.innerHTML = html;
         }
 
-        // 切換展開/收合大分類
         function toggleCategory(catId) {
             const subContainer = document.getElementById(`sub-${catId}`);
             const icon = document.getElementById(`icon-${catId}`);
@@ -188,7 +343,6 @@
             }
         }
 
-        // 渲染經文卡片列表
         function renderCards(verses, title = '搜尋結果', subtitle = '') {
             const container = document.getElementById('cards-container');
             document.getElementById('current-title').innerText = title;
@@ -200,7 +354,6 @@
                     <div class="text-center py-16 text-slate-400">
                         <i class="fa-solid fa-magnifying-glass text-4xl mb-3 text-slate-300"></i>
                         <p class="text-base font-medium">找不到相關的經文</p>
-                        <p class="text-xs mt-1">請嘗試調整關鍵字或選擇其他主題</p>
                     </div>
                 `;
                 return;
@@ -208,19 +361,16 @@
 
             container.innerHTML = verses.map(v => `
                 <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-200/80 hover:shadow-md transition">
-                    <!-- 面包屑路徑 -->
                     <div class="flex items-center text-xs text-indigo-600 font-medium mb-2 space-x-1">
                         <span>${v.categoryName}</span>
                         <i class="fa-solid fa-angle-right text-[10px] text-slate-300"></i>
                         <span>${v.topicName}</span>
                     </div>
 
-                    <!-- 經文內文 -->
                     <blockquote class="text-base font-serif text-slate-800 leading-relaxed bg-slate-50/70 p-3.5 rounded-lg border-l-4 border-amber-400 mb-3">
                         「${v.text}」
                     </blockquote>
 
-                    <!-- 篇目與按鈕列 -->
                     <div class="flex items-center justify-between pt-1">
                         <span class="font-bold text-indigo-900 text-sm tracking-wide">
                             <i class="fa-solid fa-bookmark text-amber-500 mr-1.5"></i>${v.reference}
@@ -232,7 +382,6 @@
                         </button>
                     </div>
 
-                    <!-- 探訪/應用提醒 -->
                     ${v.application_note ? `
                         <div class="mt-3.5 pt-2.5 border-t border-slate-100 text-xs text-slate-500 flex items-start space-x-1.5">
                             <i class="fa-solid fa-lightbulb text-amber-500 text-sm mt-0.5 flex-shrink-0"></i>
@@ -243,29 +392,58 @@
             `).join('');
         }
 
-        // 預設顯示全部經文
         function renderAllVerses() {
             renderCards(allVersesFlat, '全部分類經文彙編', '瀏覽庫存內所有主題與經文');
         }
 
-        // 依主題篩選
         function filterByTopic(topicId, topicName) {
             const filtered = allVersesFlat.filter(v => v.topicId === topicId);
             renderCards(filtered, topicName, '主題專屬經文清單');
             closeSidebarMobile();
         }
 
-        // 一鍵複製經文 (格式化適合貼到 LINE)
         function copyVerse(text, reference, note) {
             const formattedText = `「${text}」\n— ${reference}\n\n💡 探訪提醒：${note}`;
             navigator.clipboard.writeText(formattedText).then(() => {
                 showToast('經文與探訪提醒已複製，可直接貼至 LINE！');
-            }).catch(err => {
-                console.error('複製失敗:', err);
             });
         }
 
-        // 顯示 Toast 提示訊息
+        // 一鍵複製本週聚會與禱告材料
+        function copyPrayerContent() {
+            const text = `【小組聚會禱告材料】2026.9.6 - 9.12
+主題：得著不能奪去的喜樂
+
+經文：加拉太書 5:22-23
+「聖靈所結的果子，就是仁愛、喜樂、和平、忍耐、恩慈、良善、信實、溫柔、節制。這樣的事沒有律法禁止。」
+
+禱告焦點：喜樂根基要從環境轉向基督，在順境與逆境中都能因主而喜樂。
+
+1. 為自己禱告：
+跟主說「是祢的喜樂保護我的心，帶給我力量，我選擇從建立在環境、人的肯定或事情是否順利上『轉向祢』。奉耶穌的名，當我面對壓力、失望或等待時，按著祢的信實與良善，祢必向我顯明恩典與慈愛，使我身心靈得力、有盼望。祢的喜樂是我生命每天的力量。」
+
+2. 為教會禱告：
+跟主說「主啊，將從祢而來的喜樂充滿祢的教會，領受因著與基督的連結而有的喜樂。讓祢的喜樂來醫治事奉中的疲乏、失落與灰心，使軟弱的重新得力。我們選擇從追求聚會的氣氛，轉向心靈誠實的敬拜；將屬天的喜樂來充滿我們教會，喜樂的江河滔滔不絕的在教會湧流。
+
+3. 為國度禱告：
+宣告亞洲、美洲、中東各地，神的兒女在這個戰亂、災禍、人人自危、焦慮恐懼的時代，教會卻充滿喜樂與盼望的見證與吸引。世界越不安，神的百姓越是經歷神的信實。宣告屬主的人，要把從基督而來的喜樂盼望散佈開來。為台灣2027全國嚴肅會呼求主憐憫、保護、復興台灣。
+
+為教會事工守望：
+• 裝備課有根基奠定
+• 10/2嚴肅會前置敬拜禱告晚會
+• 10/31花蓮區嚴肅會代禱者訓練
+• 11/3花蓮區嚴肅會
+• 12月聖誕晚會籌備、2027年方向
+• 母堂、志學、新秀經歷行神蹟的神，病得醫治、生命得改變更新
+• 2027/3/27高雄全國嚴肅會！
+
+本週默想：我可以怎麼在不順遂的情況下，仍然保有屬天的喜樂？`;
+
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('聚會與禱告材料已複製，可直接發送至小組群組！');
+            });
+        }
+
         function showToast(msg) {
             const toast = document.getElementById('toast');
             document.getElementById('toast-message').innerText = msg;
@@ -275,9 +453,7 @@
             }, 2500);
         }
 
-        // 設定 Event Listeners (搜尋欄與手機版選單)
         function setupEventListeners() {
-            // 即時關鍵字搜尋
             const searchInput = document.getElementById('search-input');
             searchInput.addEventListener('input', (e) => {
                 const keyword = e.target.value.trim().toLowerCase();
@@ -294,7 +470,6 @@
                 renderCards(results, `搜尋：「${keyword}」`, `找到 ${results.length} 筆相關經文`);
             });
 
-            // 手機版選單切換
             const menuBtn = document.getElementById('mobile-menu-btn');
             const closeBtn = document.getElementById('close-sidebar-btn');
             const sidebar = document.getElementById('sidebar');
