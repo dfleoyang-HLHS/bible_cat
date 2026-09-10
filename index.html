@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聖經分類彙編經文庫</title>
+    <!-- Tailwind CSS (輕量極速樣式庫) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome 圖示 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f1f1; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 flex flex-col h-screen overflow-hidden font-sans">
+
+    <!-- 頂部導覽列 Header -->
+    <header class="bg-indigo-900 text-white shadow-md z-20 flex-shrink-0">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <button id="mobile-menu-btn" class="md:hidden text-white focus:outline-none p-1">
+                    <i class="fa-solid fa-bars text-xl"></i>
+                </button>
+                <div class="flex items-center space-x-2">
+                    <i class="fa-solid fa-book-bible text-amber-400 text-2xl"></i>
+                    <h1 class="text-xl font-bold tracking-wide">聖經分類彙編</h1>
+                </div>
+            </div>
+            <!-- 搜尋欄 (桌面版 & 手機版) -->
+            <div class="relative w-1/2 md:w-80">
+                <input type="text" id="search-input" placeholder="搜尋經文、篇名、關鍵字..." 
+                       class="w-full bg-indigo-800/60 text-white placeholder-indigo-300 rounded-full pl-9 pr-4 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-indigo-300 text-sm"></i>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要內容區 Main Container -->
+    <div class="flex flex-1 overflow-hidden relative">
+
+        <!-- 左側選單 (Sidebar) -->
+        <aside id="sidebar" class="bg-white border-r border-slate-200 w-72 flex-shrink-0 flex flex-col absolute md:relative inset-y-0 left-0 transform -translate-x-full md:translate-x-0 transition-transform duration-200 ease-in-out z-10 shadow-lg md:shadow-none">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <span class="font-bold text-slate-700 text-sm tracking-wider uppercase"><i class="fa-solid fa-list-ul mr-2 text-indigo-600"></i>主題分類大綱</span>
+                <button id="close-sidebar-btn" class="md:hidden text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark text-lg"></i>
+                </button>
+            </div>
+            <!-- 分類選單列表 -->
+            <nav id="category-tree" class="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                <!-- 由 JavaScript 自動動態渲染目錄樹 -->
+                <div class="text-center py-8 text-slate-400 text-sm">
+                    <i class="fa-solid fa-circle-notch fa-spin text-xl mb-2 text-indigo-500"></i>
+                    <p>載入分類目錄中...</p>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- 遮罩層 (手機版選單開啟時用) -->
+        <div id="sidebar-overlay" class="fixed inset-0 bg-black/40 z-0 hidden md:hidden"></div>
+
+        <!-- 右側主要內容展示區 (Content Area) -->
+        <main class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-slate-50">
+            <div class="max-w-4xl mx-auto">
+                
+                <!-- 當前選取位置 Breadcrumb / Header -->
+                <div class="mb-6 flex items-center justify-between border-b border-slate-200 pb-3">
+                    <div>
+                        <h2 id="current-title" class="text-2xl font-bold text-indigo-950">所有經文瀏覽</h2>
+                        <p id="current-subtitle" class="text-xs text-slate-500 mt-1">請選擇左側主題分類或搜尋關鍵字</p>
+                    </div>
+                    <span id="result-count" class="bg-indigo-100 text-indigo-800 text-xs font-semibold px-2.5 py-1 rounded-full">0 條經文</span>
+                </div>
+
+                <!-- 經文卡片展示容器 -->
+                <div id="cards-container" class="space-y-4">
+                    <!-- 由 JavaScript 自動渲染經文卡片 -->
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- 吐司通知 Toast (複製成功提示) -->
+    <div id="toast" class="fixed bottom-5 right-5 bg-slate-800 text-white px-4 py-2.5 rounded-lg shadow-xl text-sm flex items-center space-x-2 transition-opacity duration-300 opacity-0 pointer-events-none z-50">
+        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span id="toast-message">經文已複製到剪貼簿！</span>
+    </div>
+
+    <!-- JavaScript 邏輯程式碼 -->
+    <script>
+        let bibleData = null;
+        let allVersesFlat = []; // 用於快速關鍵字搜尋的扁平化資料
+
+        // 初始化：載入 JSON 檔案
+        document.addEventListener('DOMContentLoaded', () => {
+            fetch('bible_topics.json')
+                .then(response => {
+                    if (!response.ok) throw new Error('無法讀取 bible_topics.json 檔案');
+                    return response.json();
+                })
+                .then(data => {
+                    bibleData = data;
+                    flattenData(data);
+                    renderSidebar(data);
+                    renderAllVerses(); // 預設顯示全部經文
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('cards-container').innerHTML = `
+                        <div class="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl text-center">
+                            <i class="fa-solid fa-triangle-exclamation text-2xl mb-2 text-red-500"></i>
+                            <p class="font-bold">資料載入失敗</p>
+                            <p class="text-xs mt-1">請確認 index.html 與 bible_topics.json 是否位於同一資料夾下。</p>
+                        </div>
+                    `;
+                });
+
+            setupEventListeners();
+        });
+
+        // 扁平化資料，便於搜尋
+        function flattenData(data) {
+            allVersesFlat = [];
+            data.categories.forEach(cat => {
+                cat.subcategories.forEach(sub => {
+                    sub.topics.forEach(topic => {
+                        topic.verses.forEach(verse => {
+                            allVersesFlat.push({
+                                ...verse,
+                                categoryName: cat.category_name,
+                                subcategoryName: sub.subcategory_name,
+                                topicName: topic.topic_name,
+                                categoryId: cat.category_id,
+                                topicId: topic.topic_id
+                            });
+                        });
+                    });
+                });
+            });
+        }
+
+        // 渲染左側樹狀分類選單
+        function renderSidebar(data) {
+            const container = document.getElementById('category-tree');
+            let html = '';
+
+            data.categories.forEach(cat => {
+                html += `
+                    <div class="mb-2">
+                        <button onclick="toggleCategory('${cat.category_id}')" class="w-full text-left font-bold text-slate-700 hover:bg-indigo-50 hover:text-indigo-700 p-2 rounded-lg text-sm flex justify-between items-center transition">
+                            <span class="truncate">${cat.category_name}</span>
+                            <i id="icon-${cat.category_id}" class="fa-solid fa-chevron-down text-xs text-slate-400 transition-transform"></i>
+                        </button>
+                        <div id="sub-${cat.category_id}" class="hidden pl-3 mt-1 space-y-1 border-l-2 border-indigo-100 ml-2">
+                `;
+
+                cat.subcategories.forEach(sub => {
+                    html += `<div class="text-xs font-bold text-slate-400 px-2 py-1 mt-1">${sub.subcategory_name}</div>`;
+                    sub.topics.forEach(topic => {
+                        html += `
+                            <button onclick="filterByTopic('${topic.topic_id}', '${topic.topic_name}')" class="w-full text-left text-xs text-slate-600 hover:bg-indigo-100 hover:text-indigo-900 px-2 py-1.5 rounded transition truncate">
+                                ${topic.topic_name}
+                            </button>
+                        `;
+                    });
+                });
+
+                html += `</div></div>`;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // 切換展開/收合大分類
+        function toggleCategory(catId) {
+            const subContainer = document.getElementById(`sub-${catId}`);
+            const icon = document.getElementById(`icon-${catId}`);
+            if (subContainer.classList.contains('hidden')) {
+                subContainer.classList.remove('hidden');
+                icon.classList.add('rotate-180');
+            } else {
+                subContainer.classList.add('hidden');
+                icon.classList.remove('rotate-180');
+            }
+        }
+
+        // 渲染經文卡片列表
+        function renderCards(verses, title = '搜尋結果', subtitle = '') {
+            const container = document.getElementById('cards-container');
+            document.getElementById('current-title').innerText = title;
+            document.getElementById('current-subtitle').innerText = subtitle;
+            document.getElementById('result-count').innerText = `${verses.length} 條經文`;
+
+            if (verses.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-16 text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass text-4xl mb-3 text-slate-300"></i>
+                        <p class="text-base font-medium">找不到相關的經文</p>
+                        <p class="text-xs mt-1">請嘗試調整關鍵字或選擇其他主題</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = verses.map(v => `
+                <div class="bg-white rounded-xl p-5 shadow-sm border border-slate-200/80 hover:shadow-md transition">
+                    <!-- 面包屑路徑 -->
+                    <div class="flex items-center text-xs text-indigo-600 font-medium mb-2 space-x-1">
+                        <span>${v.categoryName}</span>
+                        <i class="fa-solid fa-angle-right text-[10px] text-slate-300"></i>
+                        <span>${v.topicName}</span>
+                    </div>
+
+                    <!-- 經文內文 -->
+                    <blockquote class="text-base font-serif text-slate-800 leading-relaxed bg-slate-50/70 p-3.5 rounded-lg border-l-4 border-amber-400 mb-3">
+                        「${v.text}」
+                    </blockquote>
+
+                    <!-- 篇目與按鈕列 -->
+                    <div class="flex items-center justify-between pt-1">
+                        <span class="font-bold text-indigo-900 text-sm tracking-wide">
+                            <i class="fa-solid fa-bookmark text-amber-500 mr-1.5"></i>${v.reference}
+                        </span>
+                        <button onclick="copyVerse('${v.text.replace(/'/g, "\\'")}', '${v.reference}', '${v.application_note.replace(/'/g, "\\'")}')" 
+                                class="bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center space-x-1">
+                            <i class="fa-regular fa-copy"></i>
+                            <span>複製經文</span>
+                        </button>
+                    </div>
+
+                    <!-- 探訪/應用提醒 -->
+                    ${v.application_note ? `
+                        <div class="mt-3.5 pt-2.5 border-t border-slate-100 text-xs text-slate-500 flex items-start space-x-1.5">
+                            <i class="fa-solid fa-lightbulb text-amber-500 text-sm mt-0.5 flex-shrink-0"></i>
+                            <span class="leading-normal"><strong class="text-slate-600">探訪提醒：</strong>${v.application_note}</span>
+                        </div>
+                    ` : ''}
+                </div>
+            `).join('');
+        }
+
+        // 預設顯示全部經文
+        function renderAllVerses() {
+            renderCards(allVersesFlat, '全部分類經文彙編', '瀏覽庫存內所有主題與經文');
+        }
+
+        // 依主題篩選
+        function filterByTopic(topicId, topicName) {
+            const filtered = allVersesFlat.filter(v => v.topicId === topicId);
+            renderCards(filtered, topicName, '主題專屬經文清單');
+            closeSidebarMobile();
+        }
+
+        // 一鍵複製經文 (格式化適合貼到 LINE)
+        function copyVerse(text, reference, note) {
+            const formattedText = `「${text}」\n— ${reference}\n\n💡 探訪提醒：${note}`;
+            navigator.clipboard.writeText(formattedText).then(() => {
+                showToast('經文與探訪提醒已複製，可直接貼至 LINE！');
+            }).catch(err => {
+                console.error('複製失敗:', err);
+            });
+        }
+
+        // 顯示 Toast 提示訊息
+        function showToast(msg) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-message').innerText = msg;
+            toast.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'pointer-events-none');
+            }, 2500);
+        }
+
+        // 設定 Event Listeners (搜尋欄與手機版選單)
+        function setupEventListeners() {
+            // 即時關鍵字搜尋
+            const searchInput = document.getElementById('search-input');
+            searchInput.addEventListener('input', (e) => {
+                const keyword = e.target.value.trim().toLowerCase();
+                if (!keyword) {
+                    renderAllVerses();
+                    return;
+                }
+                const results = allVersesFlat.filter(v => 
+                    v.text.toLowerCase().includes(keyword) ||
+                    v.reference.toLowerCase().includes(keyword) ||
+                    v.topicName.toLowerCase().includes(keyword) ||
+                    v.application_note.toLowerCase().includes(keyword)
+                );
+                renderCards(results, `搜尋：「${keyword}」`, `找到 ${results.length} 筆相關經文`);
+            });
+
+            // 手機版選單切換
+            const menuBtn = document.getElementById('mobile-menu-btn');
+            const closeBtn = document.getElementById('close-sidebar-btn');
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('sidebar-overlay');
+
+            menuBtn.addEventListener('click', () => {
+                sidebar.classList.remove('-translate-x-full');
+                overlay.classList.remove('hidden');
+            });
+
+            const closeSidebar = () => {
+                sidebar.classList.add('-translate-x-full');
+                overlay.classList.add('hidden');
+            };
+
+            closeBtn.addEventListener('click', closeSidebar);
+            overlay.addEventListener('click', closeSidebar);
+        }
+
+        function closeSidebarMobile() {
+            if (window.innerWidth < 768) {
+                document.getElementById('sidebar').classList.add('-translate-x-full');
+                document.getElementById('sidebar-overlay').classList.add('hidden');
+            }
+        }
+    </script>
+</body>
+</html>
