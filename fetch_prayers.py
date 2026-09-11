@@ -19,11 +19,11 @@ def get_browser():
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
-def parse_exact_prayer_text(full_text, article_title):
-    """根據博愛浸信會標準範本，精準正則拆解欄位"""
+def parse_exact_prayer_text(full_text, title_text):
+    """根據標準範本格式精準正則拆解欄位"""
     
     # 1. 日期與 ID
-    date_match = re.search(r'(\d{1,2}/\d{1,2}\s*[\–\-~]\s*\d{1,2}/\d{1,2}|\d{4}\.\d{1,2}\.\d{1,2}\s*[\–\-~]\s*\d{1,2}\.\d{1,2})', full_text + " " + article_title)
+    date_match = re.search(r'(\d{1,2}/\d{1,2}\s*[\–\-~]\s*\d{1,2}/\d{1,2}|\d{4}\.\d{1,2}\.\d{1,2}\s*[\–\-~]\s*\d{1,2}\.\d{1,2})', title_text + " " + full_text)
     date_str = date_match.group(1) if date_match else "聚會紀錄"
     
     clean_date_num = re.sub(r'\D', '', date_str.split('-')[0].split('–')[0])
@@ -31,7 +31,7 @@ def parse_exact_prayer_text(full_text, article_title):
 
     # 2. 主題
     topic_match = re.search(r'主題[：:]\s*(.*?)(?=\n|經文[：:]|$)', full_text)
-    topic_str = topic_match.group(1).strip() if topic_match else article_title.replace(date_str, "").replace("禱告專區", "").strip()
+    topic_str = topic_match.group(1).strip() if topic_match else title_text.replace(date_str, "").replace("禱告專區", "").strip()
 
     # 3. 經文
     scripture_match = re.search(r'經文[：:]\s*(.*?)(?=\n|分享[：:]|$)', full_text)
@@ -91,79 +91,55 @@ def parse_exact_prayer_text(full_text, article_title):
         "meditation": meditation_str
     }
 
-def expand_and_fetch_all():
+def fetch_latest_9_prayers():
     driver = get_browser()
     print(f"正在開啟博愛浸信會官網: {BASE_URL}")
     driver.get(BASE_URL)
     time.sleep(3)
 
-    # 點擊展開頁籤標題
-    try:
-        toggles = driver.find_elements(By.XPATH, "//div[contains(@class, 'catItemHeader')]//a | //h3[contains(@class, 'catItemTitle')]//a | //*[contains(@class, 'toggler')]")
-        print(f"找到 {len(toggles)} 個折疊頁籤，開始點開...")
-        for t in toggles:
-            try:
-                driver.execute_script("arguments[0].click();", t)
-                time.sleep(0.3)
-            except Exception:
-                pass
-    except Exception as e:
-        print(f"展開提示: {e}")
-
-    soup = BeautifulSoup(driver.page_source, 'html.parser')
-    
-    # 提取真正文章超連結
-    article_targets = []
-    for a in soup.find_all('a', href=True):
-        href = a['href'].strip()
-        text = a.text.strip()
-        
-        # 排除非文章頁面與雜訊
-        if any(noise in text for noise in ["奉獻", "介紹", "關於", "聯絡", "主日", "課程", "服務", "登入"]):
-            continue
-        
-        if re.search(r'\d{1,4}[\./]\d{1,2}', text) or ('item' in href and '279.html' not in href):
-            # 修正 URL：確保一定是完整的 https:// 開頭網址
-            if href.startswith('http'):
-                full_url = href
-            elif href.startswith('/'):
-                full_url = "https://www.boai.org.tw" + href
-            else:
-                full_url = "https://www.boai.org.tw/" + href
-
-            if not any(t['url'] == full_url for t in article_targets) and len(text) > 3:
-                article_targets.append({'url': full_url, 'title': text})
-
-    print(f"精準抓取到 {len(article_targets)} 篇禱告日誌連結！")
+    # 1. 搜尋所有包含「禱告專區」特徵的按鈕或連結標題
+    prayer_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '禱告專區')]")
+    print(f"尋找到 {len(prayer_elements)} 個「禱告專區」相關標題！")
 
     all_prayers = []
-    for idx, target in enumerate(article_targets[:20]):
-        target_url = target['url']
-        print(f"正在解析文章 [{idx+1}/{min(20, len(article_targets))}]: {target['title']} ({target_url})")
-        
+    
+    # 限制處理最近 9 篇
+    for idx, el in enumerate(prayer_elements[:9]):
+        title_text = el.text.strip()
+        if not title_text or "禱告專區" not in title_text:
+            continue
+
+        print(f"正在點開並讀取 [{idx+1}/9]: {title_text}")
+
         try:
-            driver.get(target_url)
-            time.sleep(1.5)
+            # 點擊該禱告專區標題讓摺疊內文展開
+            driver.execute_script("arguments[0].click();", el)
+            time.sleep(0.8) # 等待展開
+
+            # 抓取該點開元素父級/同級容器內的文字
+            # 尋找最近的 Accordion 容器或通用 Parent 容器
+            parent_container = el.find_element(By.XPATH, "./ancestor::*[contains(@class, 'catItem') or contains(@class, 'accordion') or contains(@class, 'toggle') or contains(@class, 'itemBody') or position()=2]")
+            full_text = parent_container.text.strip()
+
+            parsed_data = parse_exact_prayer_text(full_text, title_text)
             
-            detail_soup = BeautifulSoup(driver.page_source, 'html.parser')
-            article_body = detail_soup.select_one('div.itemFullText') or detail_soup.select_one('div.itemIntroText') or detail_soup.select_one('div.itemBody')
-            
-            if article_body:
-                full_text = article_body.text.strip()
-                parsed_data = parse_exact_prayer_text(full_text, target['title'])
+            # 去重比對 ID，避免重複
+            if not any(p['id'] == parsed_data['id'] for p in all_prayers):
                 all_prayers.append(parsed_data)
+                print(f"  └─ 成功解析主題: {parsed_data['topic']}")
+
         except Exception as e:
-            print(f"解析文章失敗 ({target_url}): {e}")
+            print(f"  └─ 點開解析失敗: {e}")
 
     driver.quit()
     return all_prayers
 
 def update_json():
-    prayers_list = expand_and_fetch_all()
+    prayers_list = fetch_latest_9_prayers()
     if prayers_list:
         with open('prayers.json', 'w', encoding='utf-8') as f:
             json.dump(prayers_list, f, ensure_ascii=False, indent=2)
-        print(f"🎉 成功！已寫入 {len(prayers_list)} 篇完美匹配範本的禱告日誌至 prayers.json！")
+        print(f"🎉 成功！已精準抓取最新 {len(prayers_list)} 篇禱告日誌並寫入 prayers.json！")
     else:
         print("未抓取到任何資料。")
 
