@@ -5,8 +5,19 @@ on:
     - cron: '0 0 * * 1'
   workflow_dispatch:
 
+# 賦予工作流寫入權限與發布 Pages 的權限
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# 確保同時只有一個部署進行
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
 jobs:
-  build:
+  build_and_deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -26,10 +37,22 @@ jobs:
     - name: 執行 Selenium 模擬點開並抓取最新禱告日誌
       run: python fetch_prayers.py
 
-    - name: 自動 Commit 與 Push 回專案
+    - name: 自動 Commit 與 Push 回儲存庫
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action Bot"
         git add prayers.json
         git diff-index --quiet HEAD || git commit -m "🤖 自動更新：每週聚會禱告日誌"
         git push
+
+    - name: 設定 GitHub Pages 部署環境
+      uses: actions/configure-pages@v3
+
+    - name: 上傳網站靜態檔案 Artifact
+      uses: actions/upload-pages-artifact@v2
+      with:
+        path: '.' # 發布整個根目錄
+
+    - name: 部署至 GitHub Pages 網站
+      id: deployment
+      uses: actions/deploy-pages@v2
