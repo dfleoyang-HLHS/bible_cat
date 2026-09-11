@@ -26,7 +26,6 @@ def parse_exact_prayer_text(full_text, article_title):
     date_match = re.search(r'(\d{1,2}/\d{1,2}\s*[\–\-~]\s*\d{1,2}/\d{1,2}|\d{4}\.\d{1,2}\.\d{1,2}\s*[\–\-~]\s*\d{1,2}\.\d{1,2})', full_text + " " + article_title)
     date_str = date_match.group(1) if date_match else "聚會紀錄"
     
-    # 用月份與日期建立 ID (如 prayer-20260913)
     clean_date_num = re.sub(r'\D', '', date_str.split('-')[0].split('–')[0])
     date_id = f"prayer-2026{clean_date_num}" if len(clean_date_num) <= 4 else f"prayer-{clean_date_num}"
 
@@ -38,7 +37,7 @@ def parse_exact_prayer_text(full_text, article_title):
     scripture_match = re.search(r'經文[：:]\s*(.*?)(?=\n|分享[：:]|$)', full_text)
     scripture_str = scripture_match.group(1).strip() if scripture_match else "請參閱官網經文"
 
-    # 4. 分享段落 (取 分享： 與 禱告焦點： 之間的所有文字)
+    # 4. 分享段落
     share_paragraphs = []
     share_match = re.search(r'分享[：:]\s*(.*?)(?=禱告焦點[：:]|1\.|\n1\.|為自己禱告|$)', full_text, re.DOTALL)
     if share_match:
@@ -61,7 +60,7 @@ def parse_exact_prayer_text(full_text, article_title):
     p_church = p_church_match.group(1).strip() if p_church_match else "求主聖靈大能運行在教會中。"
     p_kingdom = p_kingdom_match.group(1).strip() if p_kingdom_match else "為國度復興與世代平安守望。"
 
-    # 7. 教會事工守望 (用分號或換行切割)
+    # 7. 教會事工守望
     intercessions = []
     intercessions_match = re.search(r'為教會事工守望[：:]\s*(.*?)(?=\n本週默想|本週默想[：:]|$)', full_text, re.DOTALL)
     if intercessions_match:
@@ -116,14 +115,22 @@ def expand_and_fetch_all():
     # 提取真正文章超連結
     article_targets = []
     for a in soup.find_all('a', href=True):
-        href = a['href']
+        href = a['href'].strip()
         text = a.text.strip()
         
+        # 排除非文章頁面與雜訊
         if any(noise in text for noise in ["奉獻", "介紹", "關於", "聯絡", "主日", "課程", "服務", "登入"]):
             continue
         
         if re.search(r'\d{1,4}[\./]\d{1,2}', text) or ('item' in href and '279.html' not in href):
-            full_url = "https://www.boai.org.tw" + href if href.startswith('/') else href
+            # 修正 URL：確保一定是完整的 https:// 開頭網址
+            if href.startswith('http'):
+                full_url = href
+            elif href.startswith('/'):
+                full_url = "https://www.boai.org.tw" + href
+            else:
+                full_url = "https://www.boai.org.tw/" + href
+
             if not any(t['url'] == full_url for t in article_targets) and len(text) > 3:
                 article_targets.append({'url': full_url, 'title': text})
 
@@ -131,13 +138,14 @@ def expand_and_fetch_all():
 
     all_prayers = []
     for idx, target in enumerate(article_targets[:20]):
-        print(f"正在解析文章 [{idx+1}/{min(20, len(article_targets))}]: {target['title']}")
+        target_url = target['url']
+        print(f"正在解析文章 [{idx+1}/{min(20, len(article_targets))}]: {target['title']} ({target_url})")
+        
         try:
-            driver.get(target['url'])
+            driver.get(target_url)
             time.sleep(1.5)
             
             detail_soup = BeautifulSoup(driver.page_source, 'html.parser')
-            # 鎖定文章核心 Body
             article_body = detail_soup.select_one('div.itemFullText') or detail_soup.select_one('div.itemIntroText') or detail_soup.select_one('div.itemBody')
             
             if article_body:
@@ -145,7 +153,7 @@ def expand_and_fetch_all():
                 parsed_data = parse_exact_prayer_text(full_text, target['title'])
                 all_prayers.append(parsed_data)
         except Exception as e:
-            print(f"解析文章失敗 ({target['url']}): {e}")
+            print(f"解析文章失敗 ({target_url}): {e}")
 
     driver.quit()
     return all_prayers
