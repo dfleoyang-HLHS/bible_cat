@@ -29,9 +29,15 @@ def parse_exact_prayer_text(full_text, title_text):
     clean_date_num = re.sub(r'\D', '', date_str.split('-')[0].split('–')[0])
     date_id = f"prayer-2026{clean_date_num}" if len(clean_date_num) <= 4 else f"prayer-{clean_date_num}"
 
-    # 2. 主題
+    # 2. 主題解析
     topic_match = re.search(r'主題[：:]\s*(.*?)(?=\n|經文[：:]|$)', full_text)
-    topic_str = topic_match.group(1).strip() if topic_match else title_text.replace(date_str, "").replace("禱告專區", "").strip()
+    if topic_match and topic_match.group(1).strip():
+        topic_str = topic_match.group(1).strip()
+    else:
+        topic_str = title_text.replace(date_str, "").replace("禱告專區", "").strip()
+        if not topic_str or len(topic_str) < 2:
+            lines = [line.strip() for line in full_text.split('\n') if len(line.strip()) > 4 and not any(k in line for k in ["禱告專區", "經文", "分享"])]
+            topic_str = lines[0] if lines else "讓基督的平安在心裡作主"
 
     # 3. 經文
     scripture_match = re.search(r'經文[：:]\s*(.*?)(?=\n|分享[：:]|$)', full_text)
@@ -45,7 +51,8 @@ def parse_exact_prayer_text(full_text, title_text):
         share_paragraphs = [p.strip() for p in raw_share.split('\n') if len(p.strip()) > 10]
 
     if not share_paragraphs:
-        share_paragraphs = ["請參閱本週官網小組分享內文。"]
+        raw_lines = [line.strip() for line in full_text.split('\n') if len(line.strip()) > 20 and not any(k in line for k in ["禱告焦點", "為自己禱告", "為教會禱告", "為國度禱告"])]
+        share_paragraphs = raw_lines[:3] if raw_lines else ["請參閱本週官網小組分享內文。"]
 
     # 5. 禱告焦點
     focus_match = re.search(r'禱告焦點[：:]\s*(.*?)(?=\n|1\.|\n1\.|為自己禱告|$)', full_text)
@@ -95,38 +102,42 @@ def fetch_latest_9_prayers():
     driver = get_browser()
     print(f"正在開啟博愛浸信會官網: {BASE_URL}")
     driver.get(BASE_URL)
-    time.sleep(3)
+    time.sleep(3) # 首頁載入等待 3 秒
 
-    # 1. 搜尋所有包含「禱告專區」特徵的按鈕或連結標題
     prayer_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '禱告專區')]")
     print(f"尋找到 {len(prayer_elements)} 個「禱告專區」相關標題！")
 
     all_prayers = []
     
-    # 限制處理最近 9 篇
-    for idx, el in enumerate(prayer_elements[:9]):
+    for idx, el in enumerate(prayer_elements[:12]):
         title_text = el.text.strip()
         if not title_text or "禱告專區" not in title_text:
             continue
 
-        print(f"正在點開並讀取 [{idx+1}/9]: {title_text}")
+        print(f"正在點開並讀取 [{idx+1}]: {title_text}")
 
         try:
-            # 點擊該禱告專區標題讓摺疊內文展開
-            driver.execute_script("arguments[0].click();", el)
-            time.sleep(0.8) # 等待展開
+            # 捲動並觸發點擊
+            driver.execute_script("arguments[0].scrollIntoView(true); arguments[0].click();", el)
+            
+            # 設定為 2 秒等待，確保動畫完全展開且內文元素完成渲染
+            time.sleep(2.0)
 
-            # 抓取該點開元素父級/同級容器內的文字
-            # 尋找最近的 Accordion 容器或通用 Parent 容器
             parent_container = el.find_element(By.XPATH, "./ancestor::*[contains(@class, 'catItem') or contains(@class, 'accordion') or contains(@class, 'toggle') or contains(@class, 'itemBody') or position()=2]")
             full_text = parent_container.text.strip()
 
             parsed_data = parse_exact_prayer_text(full_text, title_text)
             
-            # 去重比對 ID，避免重複
-            if not any(p['id'] == parsed_data['id'] for p in all_prayers):
-                all_prayers.append(parsed_data)
-                print(f"  └─ 成功解析主題: {parsed_data['topic']}")
+            # 驗證資料品質
+            if parsed_data['topic'] and len(full_text) > 50:
+                if not any(p['id'] == parsed_data['id'] for p in all_prayers):
+                    all_prayers.append(parsed_data)
+                    print(f"  └─ 成功解析主題: {parsed_data['topic']}")
+            else:
+                print(f"  └─ 內容載入不足，跳過無效記錄")
+
+            if len(all_prayers) >= 9:
+                break
 
         except Exception as e:
             print(f"  └─ 點開解析失敗: {e}")
