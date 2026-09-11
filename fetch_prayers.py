@@ -1,139 +1,122 @@
 import json
 import re
-from urllib.request import Request, urlopen
+import time
 from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from webdriver_manager.chrome import ChromeDriverManager
 
 BASE_URL = "https://www.boai.org.tw/about-us/itemlist/category/279.html"
 
-def fetch_prayer_detail(article_url):
-    """抓取單篇禱告日誌內文並解析特定區塊"""
-    try:
-        req = Request(article_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-        html = urlopen(req, timeout=10).read().decode('utf-8')
-        soup = BeautifulSoup(html, 'html.parser')
-
-        # 找尋內文容器
-        content_div = soup.find('div', class_='itemFullText') or soup.find('div', class_='itemIntroText') or soup.find('div', class_='itemBody')
-        if not content_div:
-            return None
-
-        # 整理所有文字段落
-        paragraphs = [p.text.strip() for p in content_div.find_all(['p', 'div']) if p.text.strip()]
-        
-        scripture = "詳見官網文章"
-        share_paragraphs = []
-        prayer_self = "請參照官網禱告手冊進行個人尋求與宣告。"
-        prayer_church = "求主聖靈大能充滿教會，同心合意活出榮耀見證。"
-        prayer_kingdom = "為世代復興、國家平安守望禱告。"
-        church_intercessions = ["母堂及各分堂病患經歷神醫治大能", "裝備課與聚會順利進行"]
-
-        # 解析文字內容
-        for p in paragraphs:
-            if "經文" in p or "加拉太書" in p or "「" in p:
-                if scripture == "詳見官網文章":
-                    scripture = p
-            elif "為自己禱告" in p:
-                prayer_self = p.replace("為自己禱告：", "").replace("1.", "").strip()
-            elif "為教會禱告" in p:
-                prayer_church = p.replace("為教會禱告：", "").replace("2.", "").strip()
-            elif "為國度禱告" in p:
-                prayer_kingdom = p.replace("為國度禱告：", "").replace("3.", "").strip()
-            elif "為教會事工守望" in p or "事工守望" in p:
-                items = p.split("；")
-                church_intercessions = [it.replace("為教會事工守望：", "").strip() for it in items if it.strip()]
-            else:
-                if len(p) > 20 and len(share_paragraphs) < 4:
-                    share_paragraphs.append(p)
-
-        return {
-            "scripture": scripture,
-            "shareParagraphs": share_paragraphs if share_paragraphs else ["請至博愛浸信會官網參閱完整聚會分享。"],
-            "prayers": [
-                {"title": "1. 為自己禱告", "text": prayer_self},
-                {"title": "2. 為教會禱告", "text": prayer_church},
-                {"title": "3. 為國度禱告", "text": prayer_kingdom}
-            ],
-            "churchIntercessions": church_intercessions
-        }
-    except Exception as e:
-        print(f"解析文章失敗 ({article_url}): {e}")
-        return None
-
-def fetch_batch_prayers(limit=20):
-    """抓取前 limit 篇歷史禱告日誌"""
-    all_prayers = []
-    page = 0
+def get_browser():
+    """建立隱形 Chrome 瀏覽器"""
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
     
-    while len(all_prayers) < limit:
-        url = f"{BASE_URL}?start={page * 10}" if page > 0 else BASE_URL
-        print(f"正在讀取清單頁面: {url}")
+    service = Service(ChromeDriverManager().install())
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    return driver
+
+def expand_and_fetch_all():
+    driver = get_browser()
+    print(f"正在開啟博愛浸信會官網: {BASE_URL}")
+    driver.get(BASE_URL)
+    time.sleep(3) # 等待網頁與動態套件載入完成
+
+    # 尋找並點開頁面上所有的收合/摺疊區塊 (Toggle/Accordion/Collapse)
+    try:
+        # 尋找常見的摺疊按鈕 class (例如 accordion, toggle, collapse, catItemHeader 等)
+        toggle_buttons = driver.find_elements(By.XPATH, "//a[contains(@class, 'toggle') or contains(@class, 'accordion') or contains(@class, 'toggler')] | //div[contains(@class, 'catItemHeader')]")
+        print(f"找到 {len(toggle_buttons)} 個可能收合的區塊，準備全部點開...")
         
+        for btn in toggle_buttons:
+            try:
+                driver.execute_script("arguments[0].click();", btn)
+                time.sleep(0.3)
+            except Exception:
+                pass
+        time.sleep(2)
+    except Exception as e:
+        print(f"自動點開摺疊區塊時出現小提醒（不影響後續）: {e}")
+
+    # 取得點開後的完整 HTML
+    html = driver.page_source
+    soup = BeautifulSoup(html, 'html.parser')
+    
+    # 搜尋所有文章的超連結
+    links = soup.select('a')
+    article_targets = []
+
+    for a in links:
+        href = a.get('href', '')
+        title_text = a.text.strip()
+        
+        # 篩選出標題帶有日期格式或為文章路徑的連結
+        if '279.html' not in href and ('item' in href or re.search(r'\d{4}\.\d{1,2}', title_text)):
+            full_url = "https://www.boai.org.tw" + href if href.startswith('/') else href
+            if full_url not in [t['url'] for t in article_targets] and len(title_text) > 5:
+                article_targets.append({'url': full_url, 'title': title_text})
+
+    print(f"成功擷取到 {len(article_targets)} 篇潛在禱告日誌連結！")
+
+    # 開始逐一抓取每篇文章內文
+    all_prayers = []
+    for idx, target in enumerate(article_targets[:20]): # 限制前 20 篇
+        print(f"正在抓取內文 [{idx+1}/{min(20, len(article_targets))}]: {target['title']}")
         try:
-            req = Request(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
-            html = urlopen(req, timeout=10).read().decode('utf-8')
-            soup = BeautifulSoup(html, 'html.parser')
+            driver.get(target['url'])
+            time.sleep(1.5)
+            detail_soup = BeautifulSoup(driver.page_source, 'html.parser')
 
-            # 抓取文章清單標題連結
-            items = soup.select('.catItemHeader a, .catItemTitle a, h3.catItemTitle a')
-            if not items:
-                print("已無更多歷史頁面。")
-                break
+            content_div = detail_soup.find('div', class_='itemFullText') or detail_soup.find('div', class_='itemIntroText') or detail_soup.find('body')
+            paragraphs = [p.text.strip() for p in content_div.find_all(['p', 'div']) if len(p.text.strip()) > 5]
 
-            for link_tag in items:
-                if len(all_prayers) >= limit:
-                    break
+            # 提取日期與主題
+            title_text = target['title']
+            date_match = re.search(r'(\d{4}\.\d{1,2}\.\d{1,2}-\d{1,2}\.\d{1,2}|\d{4}\.\d{1,2}\.\d{1,2})', title_text)
+            date_str = date_match.group(1) if date_match else "聚會紀錄"
+            topic_str = title_text.replace(date_str, "").strip() if date_match else title_text
+            date_id = "prayer-" + re.sub(r'\D', '', date_str.split('-')[0]) if date_match else f"prayer-hist-{idx}"
 
-                href = link_tag.get('href', '')
-                if not href:
-                    continue
-                
-                article_url = "https://www.boai.org.tw" + href if href.startswith('/') else href
-                title_text = link_tag.text.strip()
+            scripture = paragraphs[0] if len(paragraphs) > 0 else "詳見官網文章"
+            share_paragraphs = paragraphs[1:4] if len(paragraphs) >= 4 else paragraphs
 
-                # 提煉日期與主題
-                date_match = re.search(r'(\d{4}\.\d{1,2}\.\d{1,2}-\d{1,2}\.\d{1,2}|\d{4}\.\d{1,2}\.\d{1,2})', title_text)
-                date_str = date_match.group(1) if date_match else "聚會紀錄"
-                topic_str = title_text.replace(date_str, "").strip() if date_match else title_text
-                date_id = "prayer-" + re.sub(r'\D', '', date_str.split('-')[0]) if date_match else f"prayer-hist-{len(all_prayers)}"
-
-                # 去重檢查
-                if any(p['id'] == date_id for p in all_prayers):
-                    continue
-
-                print(f"正在抓取 [{len(all_prayers)+1}/{limit}]: {title_text}")
-                detail = fetch_prayer_detail(article_url)
-                if not detail:
-                    continue
-
-                new_prayer = {
-                    "id": date_id,
-                    "date": date_str,
-                    "topic": topic_str,
-                    "scripture": detail["scripture"],
-                    "shareParagraphs": detail["shareParagraphs"],
-                    "prayerFocus": "請參閱本週聚會分享與同心守望代禱事項。",
-                    "prayers": detail["prayers"],
-                    "churchIntercessions": detail["churchIntercessions"],
-                    "meditation": "本週如何將神的話語落實在日常生活中？"
-                }
-
-                all_prayers.append(new_prayer)
-
-            page += 1
+            new_prayer = {
+                "id": date_id,
+                "date": date_str,
+                "topic": topic_str if topic_str else "每週聚會禱告",
+                "scripture": scripture,
+                "shareParagraphs": share_paragraphs if share_paragraphs else ["請至官網參閱內文"],
+                "prayerFocus": "請參閱本週聚會分享與同心守望代禱事項。",
+                "prayers": [
+                    {"title": "1. 為自己禱告", "text": "請參照官網禱告手冊進行個人尋求與宣告。"},
+                    {"title": "2. 為教會禱告", "text": "求主聖靈大能充滿教會，同心合意活出榮耀見證。"},
+                    {"title": "3. 為國度禱告", "text": "為世代復興、國家平安守望禱告。"}
+                ],
+                "churchIntercessions": [
+                    "母堂及各分堂病患經歷神醫治大能",
+                    "裝備課與聚會順利進行"
+                ],
+                "meditation": "本週如何將神的話語落實在日常生活中？"
+            }
+            all_prayers.append(new_prayer)
         except Exception as e:
-            print(f"讀取頁面失敗: {e}")
-            break
+            print(f"抓取內文失敗 ({target['url']}): {e}")
 
+    driver.quit()
     return all_prayers
 
 def update_json():
-    print("開始執行歷史資料抓取與解析...")
-    prayers_list = fetch_batch_prayers(limit=20)
-    
+    prayers_list = expand_and_fetch_all()
     if prayers_list:
         with open('prayers.json', 'w', encoding='utf-8') as f:
             json.dump(prayers_list, f, ensure_ascii=False, indent=2)
-        print(f"成功！已將 {len(prayers_list)} 篇禱告日誌寫入 prayers.json。")
+        print(f"🎉 成功！已將點開後的 {len(prayers_list)} 篇歷史禱告日誌寫入 prayers.json！")
     else:
         print("未抓取到任何資料。")
 
