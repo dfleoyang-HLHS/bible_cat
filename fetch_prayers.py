@@ -1,7 +1,14 @@
 import json
 import re
+import sys
 import time
-from bs4 import BeautifulSoup
+
+try:
+    # Windows 主控台預設編碼（如 cp950）無法印出中文與 emoji，會讓腳本在寫檔成功後仍以例外結束
+    sys.stdout.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
@@ -19,15 +26,19 @@ def get_browser():
     service = Service(ChromeDriverManager().install())
     return webdriver.Chrome(service=service, options=chrome_options)
 
-def parse_exact_prayer_text(full_text, title_text):
-    """根據標準範本格式精準正則拆解欄位"""
-    
-    # 1. 日期與 ID
-    date_match = re.search(r'(\d{1,2}/\d{1,2}\s*[\–\-~]\s*\d{1,2}/\d{1,2}|\d{4}\.\d{1,2}\.\d{1,2}\s*[\–\-~]\s*\d{1,2}\.\d{1,2})', title_text + " " + full_text)
+def parse_exact_prayer_text(full_text, title_text, pub_year):
+    """根據標準範本格式精準正則拆解欄位。full_text 必須是單一週次的獨立內文（不可跨週混雜）。"""
+
+    # 官網部分標籤前面會有 FontAwesome 圖示（例如小喇叭圖示），Selenium 的 .text
+    # 會把該圖示字型的私有區域字元一併讀出來，先清掉避免殘留在擷取結果尾端。
+    full_text = re.sub(r'[-]', '', full_text)
+
+    # 1. 日期與 ID（年份取自該篇文章實際發布年份，而非寫死年份）
+    date_match = re.search(r'(\d{1,2}/\d{1,2}\s*[\–\-~]\s*\d{1,2}/\d{1,2})', title_text + " " + full_text)
     date_str = date_match.group(1) if date_match else "聚會紀錄"
-    
-    clean_date_num = re.sub(r'\D', '', date_str.split('-')[0].split('–')[0])
-    date_id = f"prayer-2026{clean_date_num}" if len(clean_date_num) <= 4 else f"prayer-{clean_date_num}"
+
+    clean_date_num = re.sub(r'\D', '', re.split(r'[\–\-~]', date_str)[0])
+    date_id = f"prayer-{pub_year}{clean_date_num}" if clean_date_num else f"prayer-{pub_year}-{abs(hash(full_text)) % 100000}"
 
     # 2. 主題解析
     topic_match = re.search(r'主題[：:]\s*(.*?)(?=\n|經文[：:]|$)', full_text)
@@ -61,7 +72,11 @@ def parse_exact_prayer_text(full_text, title_text):
     # 6. 三大禱告項目
     p_self_match = re.search(r'1\.\s*為自己禱告[：:]\s*(.*?)(?=\n2\.|2\.|為教會禱告|$)', full_text, re.DOTALL)
     p_church_match = re.search(r'2\.\s*為教會禱告[：:]\s*(.*?)(?=\n3\.|3\.|為國度禱告|$)', full_text, re.DOTALL)
-    p_kingdom_match = re.search(r'3\.\s*為國度禱告[：:]\s*(.*?)(?=\n為教會事工守望|事工守望|本週默想|$)', full_text, re.DOTALL)
+    # 注意：lookahead 不能只留「事工守望」單獨當候選條件，
+    # 因為它是「為教會事工守望」的子字串，會讓擷取在標籤中間被提早截斷，
+    # 留下多餘的「為教會」殘字；「為教會事工守望」前面有時還會有官網自己編的
+    # 項目編號（例如「4.」），也要一併排除在擷取範圍外。
+    p_kingdom_match = re.search(r'3\.\s*為國度禱告[：:]\s*(.*?)(?=\d*\.?\s*為教會事工守望|本週默想|$)', full_text, re.DOTALL)
 
     p_self = p_self_match.group(1).strip() if p_self_match else "宣告主的平安充滿我的心。"
     p_church = p_church_match.group(1).strip() if p_church_match else "求主聖靈大能運行在教會中。"
@@ -104,7 +119,8 @@ def fetch_latest_9_prayers():
     driver.get(BASE_URL)
     time.sleep(3)
 
-    # 用 JS 強制把頁面上所有隱藏面板（Accordion/Toggle/Collapse）全部顯示
+    # 用 JS 強制把頁面上所有隱藏面板（Bootstrap accordion 的 .collapse）全部顯示，
+    # 否則 Selenium 的 .text 只會讀到目前展開中的那一篇（預設只有最新一篇是展開的）
     try:
         driver.execute_script("""
             var elements = document.querySelectorAll('*');
@@ -119,37 +135,43 @@ def fetch_latest_9_prayers():
     except Exception as e:
         print(f"JS 展平網頁提示: {e}")
 
-    prayer_elements = driver.find_elements(By.XPATH, "//*[contains(text(), '禱告專區')]")
-    print(f"尋找到 {len(prayer_elements)} 個「禱告專區」相關標題！")
+    # 每一週的禱告日誌在頁面上是獨立的 <div class="accordion-group">，
+    # 直接以這個容器為單位讀取，才不會把多週內容混在一起解析
+    containers = driver.find_elements(By.CSS_SELECTOR, "div.accordion-group")
+    print(f"找到 {len(containers)} 個禱告日誌項目！")
 
     all_prayers = []
-    
-    for idx, el in enumerate(prayer_elements[:15]):
-        title_text = el.text.strip()
-        if not title_text or "禱告專區" not in title_text:
-            continue
 
-        print(f"正在讀取 [{idx+1}]: {title_text}")
-
+    for idx, container in enumerate(containers[:15]):
         try:
-            # 安全獲取包含標題與內文的祖先容器
-            parent_container = el.find_element(By.XPATH, "./ancestor::*[contains(@class, 'catItem') or contains(@class, 'accordion') or contains(@class, 'toggle') or contains(@class, 'itemBody') or position()=2]")
-            full_text = parent_container.text.strip()
+            full_text = container.text.strip()
+            if "禱告專區" not in full_text or len(full_text) < 30:
+                print(f"  └─ 第 {idx+1} 項內容不足（長度: {len(full_text)}），跳過記錄")
+                continue
 
-            # 若容器文字過少，嘗試點擊展開並重試讀取
-            if len(full_text) < 50:
-                driver.execute_script("arguments[0].scrollIntoView(true); arguments[0].click();", el)
-                time.sleep(2.0)
-                full_text = parent_container.text.strip()
+            print(f"正在讀取 [{idx+1}]: {full_text.splitlines()[0] if full_text.splitlines() else ''}")
 
-            parsed_data = parse_exact_prayer_text(full_text, title_text)
-            
-            if parsed_data['topic'] and len(full_text) > 30:
+            # 該篇文章實際發布的年份（避免把年份寫死在程式中造成隔年失效）
+            pub_year = str(time.localtime().tm_year)
+            try:
+                date_badge_text = container.find_element(By.CSS_SELECTOR, ".event-list-item-date").text
+                year_match = re.search(r'(\d{4})', date_badge_text)
+                if year_match:
+                    pub_year = year_match.group(1)
+            except Exception:
+                pass
+
+            title_match = re.search(r'\d{1,2}/\d{1,2}\s*[\–\-~]\s*\d{1,2}/\d{1,2}\s*禱告專區', full_text)
+            title_text = title_match.group(0) if title_match else full_text.splitlines()[0]
+
+            parsed_data = parse_exact_prayer_text(full_text, title_text, pub_year)
+
+            if parsed_data['topic']:
                 if not any(p['id'] == parsed_data['id'] for p in all_prayers):
                     all_prayers.append(parsed_data)
                     print(f"  └─ 成功解析主題: {parsed_data['topic']}")
-            else:
-                print(f"  └─ 內容載入不足（長度: {len(full_text)}），跳過記錄")
+                else:
+                    print(f"  └─ 與已抓取項目重複（id: {parsed_data['id']}），略過")
 
             if len(all_prayers) >= 9:
                 break
