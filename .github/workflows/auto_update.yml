@@ -21,6 +21,8 @@ jobs:
     steps:
     - name: 檢出專案程式碼
       uses: actions/checkout@v4 # 升級至 v4
+      with:
+        fetch-depth: 0 # 抓完整歷史，避免 shallow clone 讓後面的 rebase 判斷錯共同祖先
 
     - name: 設定 Python 環境
       uses: actions/setup-python@v5 # 升級至 v5
