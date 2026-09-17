@@ -41,6 +41,10 @@ jobs:
         git config --local user.name "GitHub Action Bot"
         git add prayers.json
         git diff-index --quiet HEAD || git commit -m "🤖 自動更新：每週聚會禱告日誌"
+        # 抓取過程（Selenium）耗時，這段時間內 main 有可能已經被別的 push 更新，
+        # 所以推送前先 rebase 到最新的 origin/main，避免 non-fast-forward 被拒絕
+        git fetch origin main
+        git rebase origin/main
         git push
 
     - name: 設定 GitHub Pages 部署環境
