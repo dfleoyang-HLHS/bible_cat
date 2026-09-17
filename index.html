@@ -412,15 +412,16 @@ ${item.churchIntercessions.map(c => `• ${c}`).join('\n')}
                         <span>${v.topicName}</span>
                     </div>
 
-                    <blockquote class="text-base font-serif text-slate-800 leading-relaxed bg-slate-50/70 p-3.5 rounded-lg border-l-4 border-amber-400 mb-3">
-                        「${v.text}」
+                    <blockquote class="text-base font-serif text-slate-800 leading-relaxed bg-slate-50/70 p-3.5 rounded-lg border-l-4 border-amber-400 mb-3 space-y-2">
+                        <p>「${v.text}」</p>
+                        ${v.text_en ? `<p class="text-sm text-slate-500 italic font-serif">"${v.text_en}"</p>` : ''}
                     </blockquote>
 
                     <div class="flex items-center justify-between pt-1">
                         <span class="font-bold text-indigo-900 text-sm tracking-wide">
                             <i class="fa-solid fa-bookmark text-amber-500 mr-1.5"></i>${v.reference}
                         </span>
-                        <button onclick="copyVerse('${v.text.replace(/'/g, "\\'")}', '${v.reference}', '${v.application_note.replace(/'/g, "\\'")}')" 
+                        <button onclick="copyVerse('${v.text.replace(/'/g, "\\'")}', '${v.reference}', '${v.application_note.replace(/'/g, "\\'")}', '${(v.text_en || '').replace(/'/g, "\\'")}')"
                                 class="bg-indigo-50 hover:bg-indigo-600 hover:text-white text-indigo-700 text-xs font-semibold px-3 py-1.5 rounded-lg transition flex items-center space-x-1">
                             <i class="fa-regular fa-copy"></i>
                             <span>複製經文</span>
@@ -447,8 +448,9 @@ ${item.churchIntercessions.map(c => `• ${c}`).join('\n')}
             closeSidebarMobile();
         }
 
-        function copyVerse(text, reference, note) {
-            const formattedText = `「${text}」\n— ${reference}\n\n💡 探訪提醒：${note}`;
+        function copyVerse(text, reference, note, textEn) {
+            const englishLine = textEn ? `"${textEn}"\n` : '';
+            const formattedText = `「${text}」\n${englishLine}— ${reference}\n\n💡 探訪提醒：${note}`;
             navigator.clipboard.writeText(formattedText).then(() => {
                 showToast('經文與探訪提醒已複製，可直接貼至 LINE！');
             });
@@ -471,8 +473,9 @@ ${item.churchIntercessions.map(c => `• ${c}`).join('\n')}
                     renderAllVerses();
                     return;
                 }
-                const results = allVersesFlat.filter(v => 
+                const results = allVersesFlat.filter(v =>
                     v.text.toLowerCase().includes(keyword) ||
+                    (v.text_en && v.text_en.toLowerCase().includes(keyword)) ||
                     v.reference.toLowerCase().includes(keyword) ||
                     v.topicName.toLowerCase().includes(keyword) ||
                     v.application_note.toLowerCase().includes(keyword)
