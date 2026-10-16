@@ -182,14 +182,38 @@ def fetch_latest_9_prayers():
     driver.quit()
     return all_prayers
 
+def sort_key(prayer):
+    """依 id（prayer-年月日）與 date 的起始月/日排序，避免 id 字串長度不一造成排序錯誤。"""
+    year_match = re.match(r'prayer-(\d{4})', prayer.get('id', ''))
+    date_match = re.match(r'(\d{1,2})/(\d{1,2})', prayer.get('date', ''))
+    if not year_match or not date_match:
+        return (0, 0, 0)
+    return (int(year_match.group(1)), int(date_match.group(1)), int(date_match.group(2)))
+
+def load_existing(path='prayers.json'):
+    try:
+        with open(path, encoding='utf-8') as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
 def update_json():
-    prayers_list = fetch_latest_9_prayers()
-    if prayers_list:
-        with open('prayers.json', 'w', encoding='utf-8') as f:
-            json.dump(prayers_list, f, ensure_ascii=False, indent=2)
-        print(f"🎉 成功！已精準抓取最新 {len(prayers_list)} 篇禱告日誌並寫入 prayers.json！")
-    else:
-        print("未抓取到任何資料。")
+    fresh = fetch_latest_9_prayers()
+    if not fresh:
+        print("未抓取到任何資料，保留現有 prayers.json 不變。")
+        return
+
+    # 官網列表只會顯示最近幾篇（數量也會變動），整份覆寫會把已經存下來的歷史週次洗掉，
+    # 所以改成和既有資料合併：官網上仍存在的週次以本次抓到的為準，其餘歷史週次保留。
+    merged = {p['id']: p for p in load_existing()}
+    for p in fresh:
+        merged[p['id']] = p
+
+    prayers_list = sorted(merged.values(), key=sort_key, reverse=True)
+    with open('prayers.json', 'w', encoding='utf-8') as f:
+        json.dump(prayers_list, f, ensure_ascii=False, indent=2)
+    print(f"🎉 成功！本次抓取 {len(fresh)} 篇，合併後共 {len(prayers_list)} 篇禱告日誌並寫入 prayers.json！")
 
 if __name__ == '__main__':
     update_json()
